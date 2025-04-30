@@ -49,16 +49,23 @@
   "Keymap for `sam-mode`.")
 
 (defun sam--highlight-matches ()
-  "Highlight all current sam matches."
+  "Highlight visible sam matches."
   (sam--clear-overlays)
-  (setq sam--overlays
-        (mapcar (lambda (range)
-                  (let ((start (marker-position (car range)))
-                        (end (marker-position (cdr range))))
-                    (let ((ov (make-overlay start end)))
-                      (overlay-put ov 'face 'sam-match-face)
-                      ov)))
-                sam--matches)))
+  (dolist (win (window-list))
+    (let ((start (window-start win))
+          (end (window-end win t))) ;; `t` includes partially visible lines
+      (dolist (range sam--matches)
+        (let ((match-start (marker-position (car range)))
+              (match-end (marker-position (cdr range))))
+          (when (and (>= match-end start)
+                     (<= match-start end))
+            (let ((ov (make-overlay match-start match-end)))
+              (overlay-put ov 'face 'highlight)
+              (push ov sam--overlays))))))))
+
+(defun sam--refresh-on-scroll (_win _start)
+  "Refresh visible match highlights after scrolling."
+  (sam--highlight-matches))
 
 (defun sam--clear-overlays ()
   "Remove all sam match overlays."
@@ -483,7 +490,10 @@ Otherwise, prompt for REGEX and search."
   :lighter " sam"
   :keymap sam-mode-map
   (if sam-mode
-      (message "sam-mode activated.")
+      (progn
+        (add-hook 'window-scroll-functions #'sam--refresh-on-scroll nil t)
+        (message "sam-mode activated."))
+    (remove-hook 'window-scroll-functions #'sam--refresh-on-scroll t)
     (sam-clear-selection)))
 
 (provide 'sam)
