@@ -54,6 +54,12 @@
     map)
   "Keymap for `sam-mode`.")
 
+(defun sam--valid-regexp-p (regex)
+  "Return non-nil if REGEX compiles without error."
+  (condition-case nil
+      (progn (string-match-p regex "") t)
+    (invalid-regexp nil)))
+
 (defun sam--highlight-matches ()
   "Highlight visible sam matches."
   (sam--clear-overlays)
@@ -106,13 +112,6 @@
            (activate-change-group change-group)
            ,@body)
        (accept-change-group change-group))))
-
-(defun sam-keyboard-quit ()
-  "Handle C-g (keyboard-quit) during sam sessions."
-  (interactive)
-  (if sam--matches
-      (sam-clear-selection)
-    (keyboard-quit)))
 
 (defun sam-delete-matches ()
   "Delete all matched regions."
@@ -436,7 +435,9 @@ If DELETE-ORIGINALS is non-nil, remove original matches first."
           (add-hook 'after-change-functions
                     (lambda (&rest _)
                       (let ((regex (minibuffer-contents)))
-                        (sam--collect-regex-matches buffer regex)))
+                        (when (and (> (length regex) 1) ; delay matching
+                                   (sam--valid-regexp-p regex))
+                          (sam--collect-regex-matches buffer regex))))
                     nil t))
       (read-from-minibuffer "Regex: "))))
 
