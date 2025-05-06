@@ -54,6 +54,13 @@
     map)
   "Keymap for `sam-mode`.")
 
+(defun sam--minibuffer-restore-menu (buffer)
+  "Restore sam transient menu in BUFFER after minibuffer exit, if still in sam mode."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (and sam-mode sam--matches)
+        (run-at-time 0 nil #'sam-transient-menu)))))
+
 (defun sam--valid-regexp-p (regex)
   "Return non-nil if REGEX compiles without error."
   (condition-case nil
@@ -104,6 +111,16 @@
              (buffer-live-p (current-buffer)))
     (kill-buffer (current-buffer))))
 
+(defmacro sam-with-minibuffer-restore (&rest body)
+   "Evaluate BODY inside a minibuffer prompt and restore the Sam transient menu on exit."
+  `(let ((sam--origin-buffer (current-buffer)))
+     (minibuffer-with-setup-hook
+         (lambda ()
+           (add-hook 'minibuffer-exit-hook
+                     (lambda () (sam--minibuffer-restore-menu sam--origin-buffer))
+                     nil t))
+       ,@body)))
+
 (defmacro sam-with-undo (&rest body)
   "Execute BODY as one atomic undoable change group."
   `(let ((change-group (prepare-change-group)))
@@ -127,7 +144,8 @@
 
 (defun sam-replace-matches (replacement)
   "Replace each matched region entirely with REPLACEMENT."
-  (interactive "sReplacement text: ")
+  (interactive
+   (list (sam-with-minibuffer-restore (read-string "Replacement text: "))))
   (sam-with-undo
    (sam--clear-overlays)
    (save-excursion
@@ -142,7 +160,8 @@
 
 (defun sam-append-to-matches (text)
   "Append TEXT at the end of each matched region."
-  (interactive "sText to append: ")
+  (interactive
+   (list (sam-with-minibuffer-restore (read-string "Text to append: "))))
   (sam-with-undo
    (sam--clear-overlays)
    (save-excursion
@@ -155,7 +174,8 @@
 
 (defun sam-insert-before-matches (text)
   "Insert TEXT before each matched region."
-  (interactive "sText to insert: ")
+  (interactive
+   (list (sam-with-minibuffer-restore (read-string "Text to insert: "))))
   (sam-with-undo
    (save-excursion
      (dolist (range sam--matches)
@@ -167,8 +187,8 @@
 (defun sam-substitute-inside-matches (pattern replacement)
   "Substitute PATTERN with REPLACEMENT inside each matched region."
   (interactive
-   (list (read-regexp "Substitute pattern: ")
-         (read-string "Replacement: ")))
+   (list (sam-with-minibuffer-restore (read-regexp "Substitute pattern: "))
+         (sam-with-minibuffer-restore (read-string "Replacement: "))))
   (sam-with-undo
    (save-excursion
      (dolist (range sam--matches)
@@ -184,7 +204,8 @@
 (defun sam-apply-template (template)
   "Wrap each match using TEMPLATE.
 Supports {match}, {index} and {index:FORMAT}, and {elisp:FORM}."
-  (interactive "sTemplate (use {match}, {index}, {index:FORMAT}, {elisp:...}): ")
+  (interactive
+   (list (sam-with-minibuffer-restore (read-string "Template (use {match}, {index}, {index:FORMAT}, {elisp:...}): "))))
   (sam-with-undo
    (sam--clear-overlays)
    (let* ((ordered (sort sam--matches (lambda (a b) (< (marker-position (car a))
